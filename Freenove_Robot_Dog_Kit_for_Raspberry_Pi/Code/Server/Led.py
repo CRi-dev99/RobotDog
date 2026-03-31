@@ -6,7 +6,7 @@ from spi_ledpixel import Freenove_SPI_LedPixel
 
 class Led:
     def __init__(self):
-        """Initialize the Led class and set up LED strip based on PCB and Raspberry Pi versions."""
+        """Initialize the Led class and set up LED strip based on PCB and Raspberry Pi versions1111111."""
         # Initialize the ParameterManager instance
         self.param = ParameterManager()
         # Get the PCB version from the parameter file
