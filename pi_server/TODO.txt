@@ -1,0 +1,176 @@
+? 1. Data Modeling (How to structure your data)
+
+Even if you start with a tiny project, you�ll eventually want to store data.
+
+Learn:
+
+Databases
+
+SQLite (simple, built-in)
+
+PostgreSQL (real-world standard)
+
+ORM (Object Relational Mapping)
+
+SQLAlchemy
+
+How to design tables:
+
+users
+
+logs
+
+device settings
+
+?? Why it matters:
+You�ll need this once you want:
+
+persistent state
+
+user accounts
+
+logging history
+
+? 2. API Design (Clean and consistent)
+
+Right now your API works, but real APIs follow standards.
+
+Learn:
+
+REST principles
+
+Naming conventions
+
+Response formats
+
+Versioning (/api/v1/...)
+
+?? Why it matters:
+Your API becomes easier to maintain and expand.
+
+? 3. Testing (so things don�t break randomly)
+
+You need confidence that your code works.
+
+Learn:
+
+Unit tests
+
+Integration tests
+
+pytest
+
+Mocking requests
+
+?? Why it matters:
+You won�t break your server when adding new features.
+
+? 4. Error handling & reliability
+
+You need predictable failure behavior.
+
+Learn:
+
+Proper error codes (400/401/403/404/500)
+
+Global error handlers
+
+Validation errors
+
+Graceful shutdown
+
+?? Why it matters:
+Your server won�t crash on bad input or hardware failure.
+
+? 5. Asynchronous programming (speed + performance)
+
+If you want to do more than one thing at a time (e.g., handle multiple requests while reading sensors), you�ll need async.
+
+Learn:
+
+Async/await
+
+FastAPI (optional, but excellent)
+
+Background tasks
+
+?? Why it matters:
+Your Pi can handle multiple clients without freezing.
+
+? 6. Deployment (make it run reliably 24/7)
+
+Running a Flask app with python app.py is fine for learning, but not for real use.
+
+Learn:
+
+gunicorn
+
+nginx
+
+systemd service
+
+Auto restart
+
+Log rotation
+
+?? Why it matters:
+Your Pi becomes a real server, not just a script.
+
+? 7. Performance Optimization (so it runs smoothly)
+Learn:
+
+Caching (Redis or simple in-memory)
+
+Pagination
+
+Avoiding expensive operations
+
+Profiling tools
+
+?? Why it matters:
+Your system stays fast even as it grows.
+
+? 8. Observability (monitoring + debugging)
+
+You�ll want to know what your server is doing.
+
+Learn:
+
+Logs (structured logging)
+
+Metrics (Prometheus)
+
+Alerts (Grafana)
+
+Health endpoints (/health)
+
+?? Why it matters:
+You can diagnose problems before users do.
+
+? 9. Real-time communication (optional but powerful)
+
+For instant updates, like live sensor readings:
+
+Learn:
+
+WebSockets
+
+MQTT (common for IoT)
+
+?? Why it matters:
+You can build dashboards that update live.
+
+? 10. Version Control (Git)
+
+If you want to manage your project properly:
+
+Learn:
+
+Git basics
+
+Branching
+
+Pull requests
+
+?? Why it matters:
+You can safely experiment and track changes.
