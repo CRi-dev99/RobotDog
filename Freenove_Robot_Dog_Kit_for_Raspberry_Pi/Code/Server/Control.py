@@ -6,7 +6,7 @@ import smbus
 import copy
 import threading
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.IMU import *
-from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.PID import *
+from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.PID import Incremental_PID
 import numpy as np
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Servo import *
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Command import COMMAND as cmd
