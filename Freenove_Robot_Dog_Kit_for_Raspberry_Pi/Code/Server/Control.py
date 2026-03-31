@@ -32,7 +32,7 @@ class Control:
         self.relax_max_time_limit = 60   # Set the maximum amount of time the robot dog is forced to rest mode
         self.relax_min_time_limit = 10   # Set the time when the robot dog enters the rest mode when there is no operation
         #self.imu=IMU()
-        self.servo=Servo()
+        #self.servo=Servo()
         self.pid = Incremental_PID(0.5,0.0,0.0025)
         self.speed = 8
         self.height = 99
