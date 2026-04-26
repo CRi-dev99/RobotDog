@@ -41,14 +41,16 @@ def client_program():
 
     print("Client GUI")
     gui = '''
-        ________
-        |   w   |
-        |forward|
-________|_______|_______
+        _________________
+        |   w   |   e   |
+        |forward|  exit |
+________|_______|_______|
 |   a   |   s   |   d   |
-| left  |  down | right |
+| left  |  back | right |
 |_______|_______|_______|
-        
+        |   z   |   x   |
+        |head up|head down
+        |_______|_______|
 
 '''
     while True:
@@ -59,7 +61,7 @@ ________|_______|_______
             client_socket.send(cmd.encode())
             data = client_socket.recv(1024).decode()  # receive response
 
-            print('Received from server: ' + data)
+            print(f"Received from server: {data}")
         else:
             client_socket.close()
             break
@@ -68,4 +70,4 @@ ________|_______|_______
 if __name__ == '__main__':
     client_program()
 
-# Need to add this code to github
+# Need to add this code to github - added
