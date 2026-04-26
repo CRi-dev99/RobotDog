@@ -1,10 +1,14 @@
+
+
 import socket
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sendBack= False
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Control import Control as C
+from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Servo import Servo as S
 
 def server_program():
     # get the hostname
@@ -20,34 +24,41 @@ def server_program():
     server_socket.listen(2)
     conn = None
     controller = C()
+    head = S()
+    headBaseAngle = 90
+    headChannel = 15
+    counter = headBaseAngle
     try:
         conn, address = server_socket.accept()  # accept new connection
         print("Connection from: " + str(address))
+        head.setServoAngle(headChannel, headBaseAngle)
         while True:
             # receive data stream. it won't accept data packet greater than 1024 bytes
             data = conn.recv(1024).decode()
-            split_data = data.split(',')
-            if split_data[0] == 'forward':
-                counter = split_data[1]
-                for i in range(int(counter)):
+            if data == "w":
+                for i in range(3):
                     controller.forWard()
-            if split_data[0] == 'backward':
-                counter = split_data[1]
-                for i in range(int(counter)):
+            elif data == "s":
+                for i in range(3):
                     controller.backWard()
-            if split_data[0] == 'left':
-                counter = split_data[1]
-                for i in range(int(counter)):
+            elif data == "a":
+                for i in range(3):
                     controller.turnLeft()
-            if split_data[0] == 'right':
-                counter = split_data[1]
-                for i in range(int(counter)):
+            elif data == "d":
+                for i in range(3):
                     controller.turnRight()
-            if not data:
-                # if data is not received break
-                break
+            elif data == "z":
+                head.setServoAngle(headChannel, counter+10)
+                counter += 10
+            elif data == "x":
+                head.setServoAngle(headChannel, counter-10)
+                counter -= 10
+                
             print("from connected user: " + str(data))
-            data = input(' -> ')
+            if sendBack:
+                data = input(' -> ')
+            else:
+                data = "Command received"
             conn.send(data.encode())  # send data to the client
     except KeyboardInterrupt:
         print("Server shutting down gracefully")
@@ -65,4 +76,3 @@ if __name__ == '__main__':
 # Because I had too change the robot shield, many of the sensors don't communicate in Control.py
 # I've commented out the code that uses the sensors
 # Most of the probleemss can from the __init__
-
