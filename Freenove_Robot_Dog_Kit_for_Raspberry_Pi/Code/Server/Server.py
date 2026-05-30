@@ -106,7 +106,12 @@ class Server:
             pass
         self.server_socket.close()
         print ("socket video connected ... ")
-        camera = Picamera2()
+        try:
+            camera = Picamera2()
+        except Exception as exc:
+            print(f"No camera available for video transmission: {exc}")
+            return
+
         camera.configure(camera.create_video_configuration(main={"size": (400, 300)}))
         output = StreamingOutput()
         encoder = JpegEncoder(q=95)
