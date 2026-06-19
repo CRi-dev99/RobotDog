@@ -24,10 +24,10 @@ def client_program():
 ________|_______|_______|
 |   a   |   s   |   d   |
 | left  |  back | right |
-|_______|_______|_______|
-        |   z   |   x   |
-        |head up|head down
-        |_______|_______|
+|_______|_______|_______|_______
+        |   z   |   x   |   c   |
+        |head up|head dn| camera|
+        |_______|_______|_______|
 
 '''
     while True:
@@ -40,11 +40,11 @@ ________|_______|_______|
 
             print(f"Received from server: {data}")
         else:
+            client_socket.send(cmd.encode())
+            data = client_socket.recv(1024).decode()
             client_socket.close()
             break
 
 
 if __name__ == '__main__':
     client_program()
-
-# Need to add this code to github - added
