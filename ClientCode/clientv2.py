@@ -50,7 +50,7 @@ ________|_______|_______|
             break
 
 def yolo_processing():
-    host = "192.168.0.8"
+    host = "192.168.0.7"
     port = 5001  # socket server port number
 
     client_socket = socket.socket()  # instantiate
@@ -69,6 +69,7 @@ def yolo_processing():
 
         frame_array = np.frombuffer(frame_bytes, dtype=np.uint8)
         frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         results = model(frame)
         processed_frame = results[0].plot()
