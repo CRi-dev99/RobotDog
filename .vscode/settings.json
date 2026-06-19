@@ -1,0 +1,4 @@
+{
+    "python.defaultInterpreterPath": "/home/pi/robot_dog111111/yolo-env/bin/python",
+    "python.analysis.autoImportCompletions": false
+}

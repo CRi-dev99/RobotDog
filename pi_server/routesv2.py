@@ -3,12 +3,15 @@
 import socket
 import sys
 import os
+from time import sleep
 
 sendBack= False
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Control import Control as C
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Servo import Servo as S
+from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.camera import *
+
 
 def server_program():
     # get the hostname
@@ -53,6 +56,24 @@ def server_program():
             elif data == "x":
                 head.setServoAngle(headChannel, counter-10)
                 counter -= 10
+            elif data == "v":
+                print("Starting video recording for 10 seconds...")
+                Video(10)
+                print("Video recording completed.")
+            elif data == "q":
+                print("Taking picture in 3...")
+                sleep(1)
+                print("Taking a picture in 2...")
+                sleep(1)
+                print("Taking a picture in 1...")
+                Picture()
+            elif data == "c":
+                start_camera_processes()
+            elif data == "t":
+                stop_camera_processes()
+            elif data == "e":
+                print("Exiting the server program.")
+                break
                 
             print("from connected user: " + str(data))
             if sendBack:
@@ -63,6 +84,7 @@ def server_program():
     except KeyboardInterrupt:
         print("Server shutting down gracefully")
     finally:
+        stop_camera_processes()
         if conn:
             conn.close()  # close the connection
         server_socket.close()
@@ -70,6 +92,9 @@ def server_program():
 
 if __name__ == '__main__':
     server_program()
+
+# run source yolo-env/bin/activate to activate the venv
+# dectivate to exit the venv
 
 
 
