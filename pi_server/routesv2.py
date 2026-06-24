@@ -91,23 +91,19 @@ def control_server():
             response = "Command received"
 
             if data == "w":
-                for i in range(3):
                     controller.forWard()
             elif data == "s":
-                for i in range(3):
                     controller.backWard()
             elif data == "a":
-                for i in range(3):
                     controller.turnLeft()
             elif data == "d":
-                for i in range(3):
                     controller.turnRight()
             elif data == "z":
-                head.setServoAngle(headChannel, counter+10)
-                counter += 10
+                head.setServoAngle(headChannel, counter+1)
+                counter += 1
             elif data == "x":
-                head.setServoAngle(headChannel, counter-10)
-                counter -= 10
+                head.setServoAngle(headChannel, counter-1)
+                counter -= 1
             elif data == "v":
                 print("Starting video recording for 10 seconds...")
                 Video(10)
