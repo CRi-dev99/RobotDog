@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.h264
+*.mp4
+.env
+known_faces/
