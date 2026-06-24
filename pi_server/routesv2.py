@@ -61,7 +61,7 @@ def control_server():
     # configure how many client the server can listen simultaneously
     server_socket.listen(2)
     conn = None
-    headBaseAngle = 90
+    headBaseAngle = 120
     headChannel = 15
     counter = headBaseAngle
     try:
@@ -100,10 +100,10 @@ def control_server():
                     controller.turnRight()
             elif data == "z":
                 head.setServoAngle(headChannel, counter+1)
-                counter += 1
+                counter += 0.5
             elif data == "x":
                 head.setServoAngle(headChannel, counter-1)
-                counter -= 1
+                counter -= 0.5
             elif data == "v":
                 print("Starting video recording for 10 seconds...")
                 Video(10)
