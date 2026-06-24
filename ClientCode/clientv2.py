@@ -21,6 +21,7 @@ KNOWN_FACES_DIR = os.path.join(
 
 RECOGNITION_THRESHOLD = 0.45
 COMMAND_COOLDOWN_SECONDS = 0.35
+SOCKET_TIMEOUT_SECONDS = 0.5
 CENTER_DEADZONE_RATIO = 0.12
 TARGET_FACE_WIDTH_RATIO = 0.28
 REAL_FACE_WIDTH_CM = 16.0
@@ -111,13 +112,21 @@ def face_area(face):
     return max(0, x2 - x1) * max(0, y2 - y1)
 
 
-def recv_exact(sock, size):
+def recv_exact(sock, size, stop_event):
     data = b""
-    while len(data) < size:
-        chunk = sock.recv(size - len(data))
+    while len(data) < size and not stop_event.is_set():
+        try:
+            chunk = sock.recv(size - len(data))
+        except socket.timeout:
+            continue
+
         if not chunk:
             return None
         data += chunk
+
+    if stop_event.is_set():
+        return None
+
     return data
 
 
@@ -134,6 +143,7 @@ def send_frame(sock, frame):
 def robot_command_sender(command_queue, stop_event):
     try:
         with socket.socket() as client_socket:
+            client_socket.settimeout(SOCKET_TIMEOUT_SECONDS)
             client_socket.connect((ROBOT_HOST, CONTROL_PORT))
 
             while True:
@@ -146,7 +156,10 @@ def robot_command_sender(command_queue, stop_event):
                     continue
 
                 client_socket.sendall(command.encode())
-                response = client_socket.recv(1024).decode()
+                try:
+                    response = client_socket.recv(1024).decode()
+                except socket.timeout:
+                    response = "no response before timeout"
                 print(f"Sent {command!r}, received: {response}")
 
                 if command == "e":
@@ -184,6 +197,7 @@ ________|_______|_______|
         command_queue.put(command)
 
         if command == "e":
+            stop_event.set()
             break
 
         time.sleep(0.2)
@@ -196,15 +210,16 @@ def face_processing(command_queue, stop_event):
 
     try:
         with socket.socket() as video_socket:
+            video_socket.settimeout(SOCKET_TIMEOUT_SECONDS)
             video_socket.connect((ROBOT_HOST, VIDEO_PORT))
 
             while not stop_event.is_set():
-                size_bytes = recv_exact(video_socket, 4)
+                size_bytes = recv_exact(video_socket, 4, stop_event)
                 if size_bytes is None:
                     break
 
                 frame_size = int.from_bytes(size_bytes, "big")
-                frame_bytes = recv_exact(video_socket, frame_size)
+                frame_bytes = recv_exact(video_socket, frame_size, stop_event)
                 if frame_bytes is None:
                     break
 
@@ -231,6 +246,8 @@ def face_processing(command_queue, stop_event):
 
     except OSError as exc:
         print(f"Video socket error: {exc}")
+    finally:
+        stop_event.set()
 
 
 def annotate_faces(frame, faces, known_faces):
@@ -364,13 +381,28 @@ if __name__ == "__main__":
         daemon=True,
     )
 
-    control_thread.start()
-    keyboard_thread.start()
-    face_thread.start()
+    threads = [control_thread, keyboard_thread, face_thread]
 
-    keyboard_thread.join()
-    control_thread.join(timeout=2)
-    face_thread.join(timeout=2)
+    try:
+        for thread in threads:
+            thread.start()
+
+        while not stop.is_set() and any(thread.is_alive() for thread in threads):
+            time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("\nClosing client...")
+        commands.put("e")
+        stop.set()
+
+    finally:
+        stop.set()
+
+        for thread in threads:
+            thread.join(timeout=2)
+
+        cv2.destroyAllWindows()
+        print("Client closed.")
 
 
 # to run: cd "C:\Users\Cristian\OneDrive - St. Joseph's Patrician College\LC_Thonny\ClientServerDevelopment"
