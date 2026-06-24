@@ -405,5 +405,5 @@ if __name__ == "__main__":
         print("Client closed.")
 
 
-# to run: cd "C:\Users\Cristian\OneDrive - St. Joseph's Patrician College\LC_Thonny\ClientServerDevelopment"
+# cd "C:\Users\Cristian\OneDrive - St. Joseph's Patrician College\LC_Thonny\ClientServerDevelopment"
 # & "C:\Users\Cristian\venvs\robotdog312\Scripts\python.exe" RobotDog\ClientCode\clientv2.py
