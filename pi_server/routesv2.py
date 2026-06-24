@@ -3,7 +3,7 @@
 import socket
 import sys
 import os
-from time import sleep
+from time import sleep, monotonic
 import threading
 import cv2
 import numpy as np
@@ -174,6 +174,9 @@ def yolo_server():
             print("Could not start camera capture", file=sys.stderr)
             shutdown_event.set()
             return
+        
+        frame_count = 0
+        last_fps_time = monotonic()
 
         while not shutdown_event.is_set():
             frame = get_latest_frame(timeout=1)
@@ -196,6 +199,8 @@ def yolo_server():
                 break
 
             processed_frame = receive_jpeg_frame(conn)
+            height, width = processed_frame.shape[:2]
+            print(f"Received processed frame of size: {width}x{height}")
             if processed_frame is None:
                 if not shutdown_event.is_set():
                     print("YOLO client disconnected")
@@ -203,6 +208,14 @@ def yolo_server():
                 break
 
             set_latest_processed_frame(processed_frame)
+
+            frame_count += 1
+            now = monotonic()
+            if now - last_fps_time >= 1.0:
+                fps = frame_count / (now - last_fps_time)
+                print(f"FPS: {fps:.2f}")
+                frame_count = 0
+                last_fps_time = now
             if not display_processed_frame(processed_frame):
                 print("Closing YOLO display")
                 shutdown_event.set()
