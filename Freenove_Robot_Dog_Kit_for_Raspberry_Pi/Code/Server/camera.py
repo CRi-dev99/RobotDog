@@ -1,180 +1,97 @@
-import sys
-from picamera2 import Picamera2, Preview
-from libcamera import ColorSpace
-from picamera2.encoders import H264Encoder
-from time import sleep
 import os
-import threading
-import multiprocessing as mp
 import queue
-import cv2
+import sys
+import threading
+from time import sleep
+
+from libcamera import ColorSpace
+from picamera2 import Picamera2
+from picamera2.encoders import H264Encoder
 
 
-camera_stop = None
-camera_processes = []
-camera_frame_queue = None
-camera_result_queue = None
-camera_process_lock = threading.Lock()
-camera_device_lock = threading.Lock()
-CV_CAPTURE_CPU = 0
-CV_YOLO_CPUS = (1, 3)
-CV_DISPLAY_CPU = 2
-CV_FPS = 15
+CAMERA_FPS = 15
 RES_X = 640
 RES_Y = 480
-YOLO_IMG_SIZE = 320
-YOLO_CONF = 0.4
-YOLO_MAX_DET = 10
-YOLO_EVERY_N_FRAMES = 1
-YOLO_TORCH_THREADS = 2
-YOLO_INTEROP_THREADS = 1
+
+camera_device_lock = threading.Lock()
+camera_stream_lock = threading.Lock()
+camera_stop = None
+camera_thread = None
+camera_frame_queue = None
 
 
-def start_camera_processes():
-    global camera_stop, camera_processes, camera_frame_queue, camera_result_queue
+def start_camera_capture():
+    global camera_stop, camera_thread, camera_frame_queue
 
-    with camera_process_lock:
-        live_processes = [process for process in camera_processes if process.is_alive()]
-        if live_processes:
-            print("Computer vision processes are already running")
-            return False
-
-        if camera_device_lock.locked():
-            print("Camera is already in use", file=sys.stderr)
-            return False
+    with camera_stream_lock:
+        if camera_thread and camera_thread.is_alive():
+            print("Camera capture is already running")
+            return True
 
         if not camera_device_lock.acquire(blocking=False):
             print("Camera is already in use", file=sys.stderr)
             return False
 
-        camera_stop = mp.Event()
-        camera_frame_queue = mp.Queue(maxsize=1)
-        camera_result_queue = mp.Queue(maxsize=1)
-
-        camera_processes = [
-            mp.Process(
-                target=captureCVFrames,
-                args=(camera_frame_queue, camera_stop),
-                name="CV-Capture",
-            ),
-            mp.Process(
-                target=runYoloDetection,
-                args=(camera_frame_queue, camera_result_queue, camera_stop),
-                name="CV-YOLO",
-            ),
-            mp.Process(
-                target=displayCVResults,
-                args=(camera_result_queue, camera_stop),
-                name="CV-Display",
-            ),
-        ]
+        camera_stop = threading.Event()
+        camera_frame_queue = queue.Queue(maxsize=1)
+        camera_thread = threading.Thread(
+            target=captureCameraFrames,
+            args=(camera_frame_queue, camera_stop),
+            name="Camera-Capture",
+            daemon=True,
+        )
 
         try:
-            for process in camera_processes:
-                process.start()
+            camera_thread.start()
         except Exception as exc:
-            print(f"Failed to start computer vision processes: {exc}", file=sys.stderr)
+            print(f"Failed to start camera capture: {exc}", file=sys.stderr)
             camera_stop.set()
-            for process in camera_processes:
-                if process.is_alive():
-                    process.terminate()
-            for process in camera_processes:
-                process.join(timeout=1)
-            _close_queue(camera_frame_queue)
-            _close_queue(camera_result_queue)
             camera_stop = None
-            camera_processes = []
+            camera_thread = None
             camera_frame_queue = None
-            camera_result_queue = None
-            _release_camera_device_lock()
+            releaseCameraDeviceLock()
             return False
 
         return True
 
 
-def stop_camera_processes(timeout=5):
-    global camera_stop, camera_processes, camera_frame_queue, camera_result_queue
+def stop_camera_capture(timeout=5):
+    global camera_stop, camera_thread, camera_frame_queue
 
-    with camera_process_lock:
+    with camera_stream_lock:
         stop_event = camera_stop
-        processes = list(camera_processes)
-        frame_queue = camera_frame_queue
-        result_queue = camera_result_queue
+        thread = camera_thread
 
     if stop_event is not None:
         stop_event.set()
 
-    for process in processes:
-        process.join(timeout=timeout)
+    if thread is not None:
+        thread.join(timeout=timeout)
 
-    for process in processes:
-        if _process_is_alive(process):
-            print(f"Terminating {process.name}", file=sys.stderr)
-            process.terminate()
-
-    for process in processes:
-        process.join(timeout=1)
-
-    for process in processes:
-        if _process_is_alive(process) and hasattr(process, "kill"):
-            print(f"Killing {process.name}", file=sys.stderr)
-            process.kill()
-
-    for process in processes:
-        process.join(timeout=1)
-
-    stopped = all(not _process_is_alive(process) for process in processes)
-
-    for process in processes:
-        try:
-            process.close()
-        except ValueError:
-            pass
-
-    _close_queue(frame_queue)
-    _close_queue(result_queue)
-
-    with camera_process_lock:
-        camera_stop = None
-        camera_processes = []
-        camera_frame_queue = None
-        camera_result_queue = None
-
-    _release_camera_device_lock()
-    return stopped
-
-
-def start_camera_thread():
-    return start_camera_processes()
-
-
-def stop_camera_thread(timeout=5):
-    return stop_camera_processes(timeout)
-
-
-def _release_camera_device_lock():
-    try:
-        camera_device_lock.release()
-    except RuntimeError:
-        pass
-
-
-def _close_queue(queue_obj):
-    if queue_obj is None:
-        return
-
-    try:
-        queue_obj.close()
-        queue_obj.join_thread()
-    except Exception as exc:
-        print(f"Error closing queue: {exc}", file=sys.stderr)
-
-
-def _process_is_alive(process):
-    try:
-        return process.is_alive()
-    except ValueError:
+    if thread is not None and thread.is_alive():
+        print("Camera capture thread did not stop cleanly", file=sys.stderr)
         return False
+
+    with camera_stream_lock:
+        camera_stop = None
+        camera_thread = None
+        camera_frame_queue = None
+
+    return True
+
+
+def get_frame_queue():
+    return camera_frame_queue
+
+
+def get_latest_frame(timeout=1):
+    if camera_frame_queue is None:
+        return None
+
+    try:
+        return camera_frame_queue.get(timeout=timeout)
+    except queue.Empty:
+        return None
 
 
 def putLatest(queue_obj, item):
@@ -189,30 +106,10 @@ def putLatest(queue_obj, item):
                 pass
 
 
-def pinCurrentProcess(cpus):
-    allowed = os.sched_getaffinity(0)
-    if isinstance(cpus, int):
-        requested = {cpus}
-    else:
-        requested = set(cpus)
-
-    selected = requested & allowed
-    if not selected:
-        selected = {min(allowed)}
-
-    os.sched_setaffinity(os.getpid(), selected)
-
-
-def displayAndCVVideo():
-    return start_camera_processes()
-
-
-def captureCVFrames(frame_queue, stop_event):
+def captureCameraFrames(frame_queue, stop_event):
     picam2 = None
 
     try:
-        pinCurrentProcess(CV_CAPTURE_CPU)
-
         picam2 = initCamera()
         if not picam2:
             stop_event.set()
@@ -220,7 +117,7 @@ def captureCVFrames(frame_queue, stop_event):
 
         config = picam2.create_video_configuration(
             main={"size": (RES_X, RES_Y), "format": "RGB888"},
-            controls={"FrameRate": CV_FPS}
+            controls={"FrameRate": CAMERA_FPS},
         )
         picam2.configure(config)
         picam2.start()
@@ -230,78 +127,20 @@ def captureCVFrames(frame_queue, stop_event):
             putLatest(frame_queue, frame)
 
     except Exception as exc:
-        print(f"Error capturing CV frames: {exc}", file=sys.stderr)
+        print(f"Error capturing camera frames: {exc}", file=sys.stderr)
         stop_event.set()
         return None
     finally:
         if picam2:
             closeCamera(picam2)
+        releaseCameraDeviceLock()
 
 
-def runYoloDetection(frame_queue, result_queue, stop_event):
+def releaseCameraDeviceLock():
     try:
-        pinCurrentProcess(CV_YOLO_CPUS)
-        cv2.setNumThreads(1)
-
-        import torch
-        torch.set_num_threads(YOLO_TORCH_THREADS)
-        try:
-            torch.set_num_interop_threads(YOLO_INTEROP_THREADS)
-        except RuntimeError as exc:
-            print(f"Could not set YOLO interop threads: {exc}", file=sys.stderr)
-
-        from ultralytics import YOLO
-        model = YOLO("yolov8n.pt")
-        frame_counter = 0
-
-        while not stop_event.is_set():
-            try:
-                frame = frame_queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-
-            frame_counter += 1
-            if frame_counter % YOLO_EVERY_N_FRAMES != 0:
-                continue
-
-            results = model.predict(
-                frame,
-                imgsz=YOLO_IMG_SIZE,
-                conf=YOLO_CONF,
-                max_det=YOLO_MAX_DET,
-                verbose=False,
-            )
-            annotated_frame = results[0].plot()
-            putLatest(result_queue, annotated_frame)
-
-    except Exception as exc:
-        print(f"Error running YOLO detection: {exc}", file=sys.stderr)
-        stop_event.set()
-        return None
-
-
-def displayCVResults(result_queue, stop_event):
-    try:
-        pinCurrentProcess(CV_DISPLAY_CPU)
-
-        while not stop_event.is_set():
-            try:
-                annotated_frame = result_queue.get(timeout=0.2)
-            except queue.Empty:
-                cv2.waitKey(1)
-                continue
-
-            cv2.imshow("YOLO Camera", annotated_frame)
-            if cv2.waitKey(1) == ord("q"):
-                stop_event.set()
-                break
-
-    except Exception as exc:
-        print(f"Error displaying CV results: {exc}", file=sys.stderr)
-        stop_event.set()
-        return None
-    finally:
-        cv2.destroyAllWindows()
+        camera_device_lock.release()
+    except RuntimeError:
+        pass
 
 
 def closeCamera(picam2):
@@ -315,14 +154,13 @@ def closeCamera(picam2):
     except Exception as exc:
         print(f"Error closing camera: {exc}", file=sys.stderr)
 
-def initCamera():
 
+def initCamera():
     try:
         available_cameras = Picamera2.global_camera_info()
     except Exception as exc:
         print(f"Error checking available cameras: {exc}", file=sys.stderr)
         return None
-
 
     if not available_cameras:
         print(
@@ -331,14 +169,11 @@ def initCamera():
         )
         return None
 
-
     try:
-        picam2 = Picamera2()
-        return picam2
+        return Picamera2()
     except Exception as exc:
         print(f"Failed to initialize Picamera2: {exc}", file=sys.stderr)
-
-
+        return None
 
 
 def Video(time):
@@ -365,7 +200,7 @@ def Video(time):
         recording_started = False
 
     except Exception as exc:
-        print(f"Error displaying video: {exc}", file=sys.stderr)
+        print(f"Error recording video: {exc}", file=sys.stderr)
         return None
     finally:
         if picam2:
@@ -376,7 +211,7 @@ def Video(time):
                     print(f"Error stopping video recording: {exc}", file=sys.stderr)
 
             closeCamera(picam2)
-        camera_device_lock.release()
+        releaseCameraDeviceLock()
 
 
 def savingNewVideos():
@@ -384,14 +219,15 @@ def savingNewVideos():
     files = os.listdir("/home/pi/robot_dog111111/videos")
     if not files:
         return "video1.h264"
-    for i in files:
-        if i.startswith("video") and i.endswith(".h264"):
-            num = int(i[5:-5])
+
+    for filename in files:
+        if filename.startswith("video") and filename.endswith(".h264"):
+            num = int(filename[5:-5])
             if counter <= num:
                 counter = num
+
     counter += 1
-    new_name = f"video{counter}.h264"
-    return new_name
+    return f"video{counter}.h264"
 
 
 def Picture():
@@ -418,18 +254,20 @@ def Picture():
     finally:
         if picam2:
             closeCamera(picam2)
-        camera_device_lock.release()
+        releaseCameraDeviceLock()
+
 
 def savingNewPictures():
     counter = 1
     files = os.listdir("/home/pi/robot_dog111111/pictures")
     if not files:
         return "picture1.jpg"
-    for i in files:
-        if i.startswith("picture") and i.endswith(".jpg"):
-            num = int(i[7:-4])
+
+    for filename in files:
+        if filename.startswith("picture") and filename.endswith(".jpg"):
+            num = int(filename[7:-4])
             if counter <= num:
                 counter = num
+
     counter += 1
-    new_name = f"picture{counter}.jpg"
-    return new_name
+    return f"picture{counter}.jpg"
