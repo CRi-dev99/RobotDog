@@ -9,16 +9,23 @@ import cv2
 import numpy as np
 
 
+
 sendBack= False
 latest_processed_frame = None
 processed_frame_lock = threading.Lock()
+latest_distance_cm = None
+latest_distance_error = "unavailable"
+latest_distance_lock = threading.Lock()
 YOLO_WINDOW_NAME = "YOLO Processed Frame"
 SOCKET_TIMEOUT_SECONDS = 0.5
+DISTANCE_POLL_SECONDS = 0.05
+DISTANCE_PRINT_SECONDS = 1.0
 shutdown_event = threading.Event()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Control import Control as C
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Servo import Servo as S
+from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.Ultrasonic import Ultrasonic
 from Freenove_Robot_Dog_Kit_for_Raspberry_Pi.Code.Server.camera import *
 
 
@@ -45,6 +52,120 @@ def close_socket(sock):
         sock.close()
     except OSError:
         pass
+
+
+def set_latest_distance(distance_cm, error=None):
+    global latest_distance_cm, latest_distance_error
+
+    with latest_distance_lock:
+        latest_distance_cm = distance_cm
+        latest_distance_error = error
+
+
+def get_latest_distance():
+    with latest_distance_lock:
+        return latest_distance_cm, latest_distance_error
+
+
+def get_distance_overlay_text():
+    distance_cm, error = get_latest_distance()
+
+    if distance_cm is not None:
+        return f"Distance: {distance_cm} cm", False
+
+    if error:
+        text = f"Distance error: {error}"
+        if len(text) > 72:
+            text = text[:69] + "..."
+        return text, True
+
+    return "Distance: unavailable", True
+
+
+def draw_distance_overlay(frame):
+    text, is_error = get_distance_overlay_text()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.7
+    thickness = 2
+    padding = 8
+    x = 12
+    y = 14
+
+    (text_width, text_height), baseline = cv2.getTextSize(
+        text,
+        font,
+        font_scale,
+        thickness,
+    )
+    color = (0, 255, 255) if not is_error else (0, 165, 255)
+
+    cv2.rectangle(
+        frame,
+        (x - padding, y - padding),
+        (x + text_width + padding, y + text_height + baseline + padding),
+        (0, 0, 0),
+        -1,
+    )
+    cv2.putText(
+        frame,
+        text,
+        (x, y + text_height),
+        font,
+        font_scale,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    return frame
+
+
+def print_latest_distance(force=False, last_print_time=0.0):
+    now = monotonic()
+    if not force and now - last_print_time < DISTANCE_PRINT_SECONDS:
+        return last_print_time
+
+    distance_cm, error = get_latest_distance()
+    if distance_cm is not None:
+        print(f"Distance: {distance_cm} cm")
+    elif error:
+        print(f"Distance error: {error}")
+    else:
+        print("Distance: unavailable")
+
+    return now
+
+
+def distance_monitor():
+    sensor = None
+    last_print_time = 0.0
+
+    try:
+        try:
+            sensor = Ultrasonic()
+            set_latest_distance(None, None)
+            print("Ultrasonic distance monitor started")
+        except Exception as exc:
+            set_latest_distance(None, str(exc))
+            print(f"Ultrasonic startup error: {exc}", file=sys.stderr)
+
+            while not shutdown_event.is_set():
+                last_print_time = print_latest_distance(last_print_time=last_print_time)
+                shutdown_event.wait(DISTANCE_PRINT_SECONDS)
+            return
+
+        while not shutdown_event.is_set():
+            try:
+                distance_cm = sensor.get_distance()
+                set_latest_distance(distance_cm, None)
+            except Exception as exc:
+                set_latest_distance(None, str(exc))
+
+            last_print_time = print_latest_distance(last_print_time=last_print_time)
+            shutdown_event.wait(DISTANCE_POLL_SECONDS)
+
+    finally:
+        if sensor is not None:
+            sensor.close()
 
 
 def control_server():
@@ -199,14 +320,15 @@ def yolo_server():
                 break
 
             processed_frame = receive_jpeg_frame(conn)
-            height, width = processed_frame.shape[:2]
-            print(f"Received processed frame of size: {width}x{height}")
             if processed_frame is None:
                 if not shutdown_event.is_set():
                     print("YOLO client disconnected")
                     shutdown_event.set()
                 break
 
+            height, width = processed_frame.shape[:2]
+            print(f"Received processed frame of size: {width}x{height}")
+            processed_frame = draw_distance_overlay(processed_frame)
             set_latest_processed_frame(processed_frame)
 
             frame_count += 1
@@ -292,13 +414,13 @@ def display_processed_frame(frame):
     cv2.imshow(YOLO_WINDOW_NAME, frame)
     return (cv2.waitKey(1) & 0xFF) != ord("q")
 
-
 if __name__ == '__main__':
     shutdown_event.clear()
 
     control_thread = threading.Thread(target=control_server, name="Control-Server")
     yolo_thread = threading.Thread(target=yolo_server, name="YOLO-Server")
-    threads = [control_thread, yolo_thread]
+    distance_thread = threading.Thread(target=distance_monitor, name="Distance-Monitor")
+    threads = [control_thread, yolo_thread, distance_thread]
 
     try:
         for thread in threads:
